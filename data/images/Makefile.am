@@ -23,12 +23,12 @@ tango_icons = \
 	billreminder.svg 
 
 app_icons = \
-	billreminder-panel-blue.svg \
-    billreminder-panel-dark-disabled.svg \
-    billreminder-panel-dark.svg \
-    billreminder-panel-light-disabled.svg \
-    billreminder-panel-light.svg \
-    billreminder-panel-red.svg
+	billreminder-indicator-blue.svg \
+    billreminder-indicator-dark-disabled.svg \
+    billreminder-indicator-dark.svg \
+    billreminder-indicator-light-disabled.svg \
+    billreminder-indicator-light.svg \
+    billreminder-indicator-red.svg
 
 install-data-local:
 	@-$(mkinstalldirs) $(DESTDIR)$(hicolordir)/16x16/apps
