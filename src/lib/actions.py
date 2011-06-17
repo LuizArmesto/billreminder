@@ -155,12 +155,17 @@ class Actions(object):
 
         return records
 
-    def count_not_paid(self):
+    def count_not_paid(self, start=None, end=None):
         count = 0
 
         try:
             session = self.dal.Session()
-            count = session.query(Bill).filter(Bill.paid == False).count()
+            q = session.query(Bill).filter(Bill.paid == False)
+            if start:
+                q = q.filter(Bill.dueDate >= start)
+            if end:
+                q = q.filter(Bill.dueDate <= end)
+            count = q.count()
         except Exception, e:
             print str(e)
         finally:
