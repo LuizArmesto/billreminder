@@ -22,18 +22,18 @@ src/gui/widgets/datebutton.py
 src/gui/widgets/genericlistview.py
 src/gui/widgets/statusbar.py
 src/gui/widgets/timewidget.py
+src/gui/widgets/timeline.py
 src/gui/widgets/toolbar.py
 src/gui/widgets/trayicon.py
+src/gui/widgets/unity.py
 src/gui/widgets/viewbill.py
 src/gui/widgets/viewcategory.py
 src/lib/actions.py
-src/lib/bill.py
 src/lib/bubble.py
 src/lib/common.py
-src/lib/config.py
 src/lib/dal.py
 src/lib/dbus_actions.py
 src/lib/dialogs.py
-src/lib/utils.py
 src/lib/scheduler.py
+src/lib/utils.py
 
