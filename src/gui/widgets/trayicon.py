@@ -95,6 +95,10 @@ class NotifyIcon:
         return True
 
     def get_hints(self):
+        if APPINDICATOR:
+            #TODO Verify what should be done when using appindicator
+            return None
+
         hints = {}
         x = self.tray.get_geometry()[1].x
         y = self.tray.get_geometry()[1].y

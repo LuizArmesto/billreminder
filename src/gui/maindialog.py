@@ -135,7 +135,7 @@ class MainDialog(gobject.GObject):
             iface.connect_to_signal("bill_edited", self.reloadTimeline)
             iface.connect_to_signal("show_main_window", self.window.show)
             self.iface = iface
-            timeout_add(2000, self._send_tray_hints)
+            gobject.timeout_add(2000, self._send_tray_hints)
 
         self.set_action_strings()
         self.ui.connect_signals(self)
@@ -172,7 +172,7 @@ class MainDialog(gobject.GObject):
     # Methods:  UI
     def _send_tray_hints(self):
         self.iface.set_tray_hints(force_string(self.notify.get_hints()))
-        timeout_add(60000, self._send_tray_hints)
+        gobject.timeout_add(60000, self._send_tray_hints)
 
     def get_window_visibility(self):
         return self.window.get_property("visible")
