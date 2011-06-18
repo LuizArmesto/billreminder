@@ -15,9 +15,9 @@
    id="svg4042"
    version="1.1"
    inkscape:version="0.48.1 r9760"
-   inkscape:export-filename="/home/luiz/Projects/BillReminder/billreminder/data/images/billreminder128_hq.png"
-   inkscape:export-xdpi="45"
-   inkscape:export-ydpi="45"
+   inkscape:export-filename="/home/luiz/Projects/billreminder/data/images/billreminder256_hq.png"
+   inkscape:export-xdpi="90"
+   inkscape:export-ydpi="90"
    sodipodi:docname="billreminder_x-large.svg">
   <defs
      id="defs4044">
@@ -1410,7 +1410,7 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="2.328125"
+     inkscape:zoom="1"
      inkscape:cx="128"
      inkscape:cy="128"
      inkscape:current-layer="layer1"
@@ -1442,7 +1442,7 @@
      inkscape:groupmode="layer"
      transform="translate(0,192)">
     <g
-       transform="matrix(1.0659953,0,0,1.0557332,-397.12722,-1323.4625)"
+       transform="matrix(1.0659953,0,0,1.0557332,-397.98628,-1322.9625)"
        id="g8274-7">
       <g
          id="g3599"
