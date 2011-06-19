@@ -4,9 +4,10 @@
 import datetime
 import locale
 from math import pi, floor
+from collections import defaultdict
 
 import pygtk
-pygtk.require("2.0")
+pygtk.require('2.0')
 import gtk
 import gobject
 import pango
@@ -15,12 +16,14 @@ import cairo
 import graphics
 from pytweener import Easing
 
+TWO_TIMES_PI = 2 * pi
+
 class Event(graphics.Sprite):
     OVERDUE = int('001', 2)
     TO_BE_PAID = int('010', 2)
     PAID = int('100', 2)
 
-    def __init__(self, date=None, radius=16, fill='#f00', stroke='#fff',
+    def __init__(self, date=None, radius=16, fill='#b3b3b3', stroke='#fff',
                  line_width=1, amountdue=0, payee='', estimated=False,
                  overthreshold=False, status=0, multi=0, tooltip='',
                  **kwargs):
@@ -44,14 +47,19 @@ class Event(graphics.Sprite):
         self.multi = multi
         self.tooltip = tooltip
 
+        self.colors = defaultdict(lambda: self.fill)
+        self.colors[self.TO_BE_PAID] = '#008000'
+        self.colors[self.OVERDUE] = '#ff0000'
+        self.colors[self.PAID] = '#b3b3b3'
+
         self.bullet_color = None
 
         self.rectangle = graphics.Rectangle(1, 1, 5,
                                            stroke='#fff',
                                            interactive=True)
-        self.rectangle.connect("on-mouse-over", self.on_mouse_over)
-        self.rectangle.connect("on-mouse-out", self.on_mouse_out)
-        self.rectangle.connect("on-click", self.on_click)
+        self.rectangle.connect("on-mouse-over", self._on_rectangle_mouse_over)
+        self.rectangle.connect("on-mouse-out", self._on_rectangle_mouse_out)
+        self.rectangle.connect("on-click", self._on_rectangle_click)
         self.rectangle.mouse_cursor = gtk.gdk.ARROW
         self.rectangle.opacity = 0
         self.add_child(self.rectangle)
@@ -67,44 +75,44 @@ class Event(graphics.Sprite):
         self.amount_label.y = 14
         self.add_child(self.amount_label)
 
-        self.connect("on-render", self.on_render)
-
-    def on_mouse_over(self, sprite):
-        self.parent.set_tooltip_text(self.tooltip)
-        self.emit('on-mouse-over')
-
-    def on_mouse_out(self, sprite):
-        self.parent.set_tooltip_text(None)
-        self.emit('on-mouse-out')
-
-    def on_click(self, event, sprite):
-        self.emit('on-click', event)
+        self.connect("on-render", self._on_render)
 
     def move_to_default_position(self):
-        x, y = self.parent.get_date_coords(self.date)
+        x, y = self.parent.get_date_pos(self.date)
         self.x = x + 4
         self.y = y + self.parent._middle - 7
 
-    def on_render(self, sprite):
-        #TODO make colors configurable
-        if self.status == self.TO_BE_PAID:
-            self.fill = '#008000'
-        elif self.status == self.OVERDUE:
-            self.fill = '#ff0000'
-        elif self.status == self.PAID:
-            self.fill =  '#b3b3b3'
+    def _on_rectangle_mouse_over(self, sprite):
+        self.parent.set_tooltip_text(self.tooltip)
+        self.emit('on-mouse-over')
+
+    def _on_rectangle_mouse_out(self, sprite):
+        if self.parent:
+            self.parent.set_tooltip_text(None)
+        self.emit('on-mouse-out')
+
+    def _on_rectangle_click(self, event, sprite):
+        self.emit('on-click', event)
+
+    def _on_render(self, sprite):
+        self.fill = self.colors[self.status]
 
         self.move_to_default_position()
 
         if self.multi:
-            self.graphics.rectangle(2.5, 2.5, self.parent.item_width - 5,
+            self.graphics.rectangle(2.5, 2.5, self.parent.item_width - 7,
                                     int(self.parent._font_height * 1.8) + 2,
                                     corner_radius=7)
             self.graphics.fill_stroke(self.fill, '#fff', self.line_width)
 
-        self.graphics.rectangle(0.5, 0.5, self.parent.item_width - 6,
-                                int(self.parent._font_height * 1.8),
-                                corner_radius=5)
+            self.graphics.rectangle(0.5, 0.5, self.parent.item_width - 8,
+                                    int(self.parent._font_height * 1.8),
+                                    corner_radius=5)
+        else:
+            self.graphics.rectangle(0.5, 0.5, self.parent.item_width - 6,
+                                    int(self.parent._font_height * 1.8),
+                                    corner_radius=5)
+
         self.graphics.fill_stroke(self.fill, '#fff', self.line_width)
         self.graphics.circle(7.5, 7.5, 3)
         self.graphics.fill_stroke((self.bullet_color if self.bullet_color else
@@ -112,7 +120,7 @@ class Event(graphics.Sprite):
                                    self.parent.style.base[self.parent.state],
                                    self.line_width)
 
-        self.rectangle.width = self.parent.item_width - 1
+        self.rectangle.width = self.parent.item_width - 5
         self.rectangle.height = int(self.parent._font_height * 1.8) + 5
 
         if self.parent.item_width >= 52:
@@ -151,7 +159,7 @@ class Event(graphics.Sprite):
 
 class TimelineBox(graphics.Scene):
     __gsignals__ = {
-        'value-changed': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
+        'range-changed': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
                           (gobject.TYPE_PYOBJECT,)),
         'event-added': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
                         (gobject.TYPE_PYOBJECT,)),
@@ -170,12 +178,12 @@ class TimelineBox(graphics.Scene):
 
         if start_date:
             self._start_date = start_date
+            self.value = self.start_date
         else:
             self._start_date = datetime.date.today() - datetime.timedelta(3)
+            self.value = datetime.date.today()
 
         self._event_function = callback
-
-        self.value = self.start_date
 
         self.item_width = self.default_item_width = 62
 
@@ -194,7 +202,6 @@ class TimelineBox(graphics.Scene):
         self._font_height = 17
 
         self._layout = self.create_pango_layout('')
-        self._2_times_pi = 2 * pi
 
         # Sprite used as reference to draw and animete date boxes
         if self.DEBUG:
@@ -216,6 +223,31 @@ class TimelineBox(graphics.Scene):
 
         self.refresh()
 
+    def get_start_date(self):
+        return self._start_date
+
+    def set_start_date(self, date):
+        self._start_date = date
+        self.range_changed()
+
+    start_date = property(get_start_date, set_start_date)
+
+    def get_end_date(self):
+        return self.start_date + datetime.timedelta((self.width /
+                                                     self.item_width) - 1)
+    def set_end_date(self, date):
+        raise TypeError("property 'end_date' is not writable")
+
+    end_date = property(get_end_date, set_end_date)
+
+    def get_scrolling(self):
+        return self._scrolling and not self._stop
+
+    def set_scrolling(self, date):
+        raise TypeError("property 'scrolling' is not writable")
+
+    scrolling = property(get_scrolling, set_scrolling)
+
     def clear(self):
         graphics.Scene.clear(self)
         self.emit('cleared', True)
@@ -235,25 +267,11 @@ class TimelineBox(graphics.Scene):
 
         self.redraw()
 
-    def get_start_date(self):
-        return self._start_date
-    def set_start_date(self, date):
-        self._start_date = date
-        self.value_changed()
-    start_date = property(get_start_date, set_start_date)
-
-    def get_end_date(self):
-        return self.start_date + datetime.timedelta((self.width /
-                                                     self.item_width) - 1)
-    def set_end_date(self, date):
-        raise TypeError("property 'end_date' is not writable")
-    end_date = property(get_end_date, set_end_date)
-
-    def value_changed(self):
-        self.value = self.start_date
+    def range_changed(self):
+        #self.value = self.start_date
         if (self._stop or self._scroll_awaiting == 1 or
             self._scroll_awaiting % 3 == 0):
-            self.emit('value-changed', self.value)
+            self.emit('range-changed', self.value)
 
         if self._event_function:
             event = self._event_function(self.start_date - datetime.timedelta(1), 0)
@@ -265,117 +283,6 @@ class TimelineBox(graphics.Scene):
                 self.add_event(event)
 
         #self.move_all_sprites_to_default_position()
-
-    def scroll_left(self, sprite=None, auto=False, duration=None, days=1,
-                    easing=Easing.Linear.ease_out):
-        if not sprite:
-            sprite = self.reference
-
-        if not duration:
-            duration = self._scroll_duration
-
-        self._scrolling = True
-        self._scroll_awaiting = days
-        self.reference.old_x = self.reference.x
-
-        def _scroll_left_next(sprite=None):
-            if self.reference.x <= self.item_width:
-                self.reference.x = 0
-                self.reference.old_x = self.reference.x
-                self.start_date -= datetime.timedelta(1)
-                self._scroll_next(sprite, gtk.gdk.SCROLL_LEFT)
-
-        def _scroll_left_stopped(sprite=None):
-            self.start_date -= datetime.timedelta(1)
-            self._scroll_stopped(sprite)
-
-        self.animate(
-            sprite, x=self.item_width,
-            easing=easing,
-            on_complete=_scroll_left_next if auto else _scroll_left_stopped,
-            on_update=self._scroll_all_sprites,
-            duration=duration
-        )
-
-    def scroll_right(self, sprite=None, auto=False, duration=None, days=1,
-                     easing=Easing.Linear.ease_out):
-        if not sprite:
-            sprite = self.reference
-
-        if not duration:
-            duration = self._scroll_duration
-
-        self._scrolling = True
-        self._scroll_awaiting = days
-        self.reference.old_x = self.reference.x
-
-        def _scroll_right_next(sprite=None):
-            if self.reference.x >= self.item_width * (-1):
-                self.reference.x = 0
-                self.reference.old_x = self.reference.x
-                self.start_date += datetime.timedelta(1)
-            self._scroll_next(sprite, gtk.gdk.SCROLL_RIGHT)
-
-        def _scroll_right_stopped(sprite=None):
-            self.start_date += datetime.timedelta(1)
-            self._scroll_stopped(sprite)
-
-        self.animate(sprite, x=self.item_width * (-1), easing=easing,
-                     on_complete=(_scroll_right_next if auto else
-                                  _scroll_right_stopped),
-                     on_update=self._scroll_all_sprites, duration=duration)
-
-    def _scroll_next(self, sprite=None, direction=None):
-        if self._stop:
-            self._scroll_stopped()
-            return
-
-        easing = Easing.Linear.ease_out
-        duration = self._scroll_duration * 0.4
-
-        if self._scroll_awaiting > 1:
-            self._scroll_awaiting -= 1
-            if self._scroll_awaiting > 2:
-                duration = self._scroll_duration * 0.4
-            self.stop_auto_scroll()
-
-        if direction is gtk.gdk.SCROLL_LEFT:
-            self.scroll_left(sprite, True, duration, self._scroll_awaiting,
-                             easing)
-        elif direction is gtk.gdk.SCROLL_RIGHT:
-            self.scroll_right(sprite, True, duration, self._scroll_awaiting,
-                              easing)
-
-    def _scroll_stopped(self, sprite=None):
-        self._stop = False
-        self._scrolling = False
-        self.reference.x = 0
-        self.move_all_sprites_to_default_position()
-
-    def _scroll_all_sprites(self, sprite=None):
-        diff = self.reference.x - self.reference.old_x
-        for s in self.sprites:
-            if s is not self.reference:
-                s.x += diff
-        self.reference.old_x = self.reference.x
-
-    def move_all_sprites_to_default_position(self):
-        for s in self.sprites:
-            if s is not self.reference:
-                s.move_to_default_position()
-                s.emit('on-render')
-
-    def stop_auto_scroll(self):
-        if self._scroll_awaiting <= 1 and self._scrolling:
-            self._stop = True
-
-    def get_date_coords(self, date):
-        pos = (date - self.start_date).days
-        return [pos * self.item_width + self.reference.x, 0]
-
-    def add_event(self, sprite):
-        self.add_child(sprite)
-        self.emit('event-added', sprite)
 
     def zoom(self, zoom):
         if zoom is self.ZOOM_OUT:
@@ -392,8 +299,9 @@ class TimelineBox(graphics.Scene):
         self.redraw()
 
         if self.width / old_item_width != self.width / self.item_width:
-            self.value_changed()
+            self.range_changed()
 
+        self.set_tooltip_text(None)
         return True
 
     def can_zoom_in(self):
@@ -413,6 +321,139 @@ class TimelineBox(graphics.Scene):
             return self.zoom(self.ZOOM_OUT)
         else:
             return False
+
+    def scroll_left(self, sprite=None, auto=False, duration=None, days=1, select=False,
+                    easing=Easing.Linear.ease_out):
+        if not sprite:
+            sprite = self.reference
+
+        if not duration:
+            duration = self._scroll_duration
+
+        self._scroll_select = select
+
+        self._scrolling = True
+        self._scroll_awaiting = days
+        self.reference.old_x = self.reference.x
+
+        def _scroll_left_next(sprite=None, *kargs):
+            if self.reference.x <= self.item_width:
+                self.reference.x = 0
+                self.reference.old_x = self.reference.x
+                self.start_date -= datetime.timedelta(1)
+                self._scroll_next(sprite, gtk.gdk.SCROLL_LEFT)
+
+        def _scroll_left_stopped(sprite=None):
+            self.start_date -= datetime.timedelta(1)
+            self._scroll_stopped(sprite, gtk.gdk.SCROLL_LEFT)
+
+        self.animate(
+            sprite, x=self.item_width,
+            easing=easing,
+            on_complete=_scroll_left_next if auto else _scroll_left_stopped,
+            on_update=self._scroll_all_sprites,
+            duration=duration,
+        )
+
+    def scroll_right(self, sprite=None, auto=False, duration=None, days=1,
+                     select=False, easing=Easing.Linear.ease_out):
+        if not sprite:
+            sprite = self.reference
+
+        if not duration:
+            duration = self._scroll_duration
+
+        self._scroll_select = select
+
+        self._scrolling = True
+        self._scroll_awaiting = days
+        self.reference.old_x = self.reference.x
+
+        def _scroll_right_next(sprite=None):
+            if self.reference.x >= self.item_width * (-1):
+                self.reference.x = 0
+                self.reference.old_x = self.reference.x
+                self.start_date += datetime.timedelta(1)
+            self._scroll_next(sprite, gtk.gdk.SCROLL_RIGHT)
+
+        def _scroll_right_stopped(sprite=None):
+            self.start_date += datetime.timedelta(1)
+            self._scroll_stopped(sprite, gtk.gdk.SCROLL_RIGHT)
+
+        self.animate(sprite, x=self.item_width * (-1), easing=easing,
+                     on_complete=(_scroll_right_next if auto else
+                                  _scroll_right_stopped),
+                     on_update=self._scroll_all_sprites, duration=duration)
+
+    def _scroll_next(self, sprite=None, direction=None):
+        if self._stop:
+            self._scroll_stopped(direction)
+            return
+
+        easing = Easing.Linear.ease_out
+        duration = self._scroll_duration * 0.4
+
+        if self._scroll_awaiting > 1:
+            self._scroll_awaiting -= 1
+            if self._scroll_awaiting > 2:
+                duration = self._scroll_duration * 0.4
+            self.stop_auto_scroll()
+
+        if direction is gtk.gdk.SCROLL_LEFT:
+            if self._scroll_select:
+                self.value = self.start_date - datetime.timedelta(1)
+            self.scroll_left(sprite, True, duration, self._scroll_awaiting,
+                             self._scroll_select, easing)
+        elif direction is gtk.gdk.SCROLL_RIGHT:
+            if self._scroll_select:
+                self.value = self.end_date + datetime.timedelta(1)
+            self.scroll_right(sprite, True, duration, self._scroll_awaiting,
+                              self._scroll_select, easing)
+
+    def _scroll_stopped(self, sprite=None, direction=None):
+        self._stop = False
+        self._scrolling = False
+        self.reference.x = 0
+        if self._scroll_select:
+            if direction is gtk.gdk.SCROLL_LEFT:
+                self.value = self.start_date - datetime.timedelta(1)
+            elif direction is gtk.gdk.SCROLL_RIGHT:
+                self.value = self.end_date + datetime.timedelta(1)
+        self._scroll_select = False
+        self.move_all_sprites_to_default_position()
+
+    def _scroll_all_sprites(self, sprite=None):
+        diff = self.reference.x - self.reference.old_x
+        for s in self.sprites:
+            if s is not self.reference:
+                s.x += diff
+        self.reference.old_x = self.reference.x
+
+    def move_all_sprites_to_default_position(self):
+        for s in self.sprites:
+            if s is not self.reference:
+                s.move_to_default_position()
+                s.emit('on-render')
+
+    def stop_auto_scroll(self):
+        if self._scroll_awaiting <= 1 and self._scrolling:
+            self._stop = True
+
+    def get_date_pos(self, date):
+        pos = (date - self.start_date).days
+        return [pos * self.item_width + self.reference.x, 0]
+
+    def get_date_by_pos(self, x, y):
+        days = int(x / self.item_width)
+        return self.start_date + datetime.timedelta(days)
+
+    def add_event(self, sprite):
+        self.add_child(sprite)
+        self.emit('event-added', sprite)
+
+    def do_on_click(self, event, target):
+        if not self._dragging:
+            pass
 
     def do_key_release_event(self, event):
         self.stop_auto_scroll()
@@ -448,29 +489,60 @@ class TimelineBox(graphics.Scene):
             else:
                 days = 30
 
+            delta = self.value - self.start_date
+
             if gtk.gdk.keyval_name(event.keyval) == 'Left':
                 self.start_date -= datetime.timedelta(days - 1)
+                self.value = self.start_date + delta - datetime.timedelta(1)
                 self.refresh()
                 self.scroll_left(None, False, self._scroll_duration * 0.6)
 
             elif gtk.gdk.keyval_name(event.keyval) == 'Right':
                 self.start_date += datetime.timedelta(days - 1)
+                self.value = self.start_date + delta + datetime.timedelta(1)
                 self.refresh()
                 self.scroll_right(None, False, self._scroll_duration * 0.6)
 
         elif gtk.gdk.keyval_name(event.keyval) == 'Left':
-            self.scroll_left(auto=True)
+            if self.value == self.start_date:
+                self.scroll_left(auto=True, select=True)
+            elif self.value < self.start_date:
+                self.start_date = self.value - datetime.timedelta(1)
+                self.refresh()
+                self.scroll_left(None, False, self._scroll_duration * 0.6)
+            elif self.value > self.end_date:
+                self.start_date = self.value - datetime.timedelta(self.count)
+                self.refresh()
+                self.scroll_right(None, False, self._scroll_duration * 0.6)
+            self.value -= datetime.timedelta(1)
+            self.redraw()
 
         elif gtk.gdk.keyval_name(event.keyval) == 'Right':
-            self.scroll_right(auto=True)
+            if self.value == self.end_date:
+                self.scroll_right(auto=True, select=True)
+            elif self.value < self.start_date:
+                self.start_date = self.value + datetime.timedelta(1)
+                self.refresh()
+                self.scroll_left(None, False, self._scroll_duration * 0.6)
+            elif self.value > self.end_date:
+                self.start_date = self.value - datetime.timedelta(self.count - 2)
+                self.refresh()
+                self.scroll_right(None, False, self._scroll_duration * 0.6)
+
+            self.value += datetime.timedelta(1)
+            self.redraw()
 
         elif gtk.gdk.keyval_name(event.keyval) == 'Page_Up':
+            delta = self.value - self.start_date
             self.start_date -= datetime.timedelta(self.count - 1)
+            self.value = self.start_date + delta - datetime.timedelta(1)
             self.refresh()
             self.scroll_left(None, False, self._scroll_duration * 0.6)
 
         elif gtk.gdk.keyval_name(event.keyval) == 'Page_Down':
+            delta = self.value - self.start_date
             self.start_date += datetime.timedelta(self.count - 1)
+            self.value = self.start_date + delta + datetime.timedelta(1)
             self.refresh()
             self.scroll_right(None, False, self._scroll_duration * 0.6)
 
@@ -494,7 +566,7 @@ class TimelineBox(graphics.Scene):
                 self.start_date -= datetime.timedelta(1)
             else:
                 self.start_date += datetime.timedelta(1)
-            self.value_changed()
+            self.range_changed()
 
         if self.item_width == abs(self.reference.x):
             _on_complete(self.reference)
@@ -509,13 +581,22 @@ class TimelineBox(graphics.Scene):
 
     def do_button_press_event(self, event):
         if event.button == 1: # Clicked with the mouse left buttom
-            self._pressed = True
-            self._clicked_position = self.get_pointer()
-            self.mouse_cursor = gtk.gdk.Cursor(gtk.gdk.FLEUR)
+
+            print event.type
+            if event.type == gtk.gdk.BUTTON_PRESS:
+                self._pressed = True
+                self._clicked_position = self.get_pointer()
+            else:
+                self._pressed = False
+
+            self.value = self.get_date_by_pos(x=event.x, y=event.y)
+            self.redraw()
 
     def do_motion_notify_event(self, event):
         if self._pressed:
             mx, my = self.get_pointer()
+            self._dragging = True
+            self.mouse_cursor = gtk.gdk.Cursor(gtk.gdk.FLEUR)
 
             if self.reference.x <= self.item_width * (-1):
                 self._clicked_position = (mx, my)
@@ -533,6 +614,11 @@ class TimelineBox(graphics.Scene):
                 self._scroll_all_sprites()
             else:
                 self.redraw()
+
+        else:
+            self._dragging = False
+
+
 
     def do_on_scroll(self, event):
         if self._scrolling or self._stop:
@@ -592,99 +678,133 @@ class TimelineBox(graphics.Scene):
 
             self._layout = self.create_pango_layout('')
 
-        self._layout.set_markup('AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqWwXxYyZz')
-        size_ = self._layout.get_pixel_size()
+        today = datetime.date.today()
+        total = int(self.width / self.item_width) + 2
+        start_date = self.start_date
+        end_date = self.end_date
+
+        reference_x = self.reference.x
+        item_width = self.item_width
+        middle = self._middle
+
+        fg_color = self._fg_color
+        bs_color = self._bs_color
+        fg_color_selected = self._fg_color_selected
+        bg_color_selected = self._bg_color_selected
+
+        layout = self._layout
+        layout_set_markup = layout.set_markup
+        layout_get_pixel_size = layout.get_pixel_size
+
+        layout_set_markup('AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqWwXxYyZz')
+        size_ = layout_get_pixel_size()
         self._font_height = size_[1]
 
         self.set_size_request(400, self._font_height * 4)
 
         # Draw main line
         context.set_line_width(1)
-        context.set_source_rgb(*self._fg_color)
-        context.move_to(0, self._middle)
-        context.line_to(self.width, self._middle)
+        context.set_source_rgb(*fg_color)
+        context.move_to(0, middle)
+        context.line_to(self.width, middle)
         context.stroke()
 
         # Draw year label
-        if self.end_date.year != self.start_date.year:
-            self._layout.set_markup('<small>%s</small>' %
-                                    self.start_date.strftime('%Y'))
+        if end_date.year != start_date.year:
+            layout_set_markup('<small>%s</small>' %
+                              start_date.strftime('%Y'))
 
             self.style.paint_layout(self.window, self.state, False, None,
-                                    self, '', 1, 2, self._layout)
+                                    self, '', 1, 2, layout)
 
-        self._layout.set_markup('<small>%s</small>' %
-                                self.end_date.strftime('%Y'))
+        layout_set_markup('<small>%s</small>' %
+                          end_date.strftime('%Y'))
 
-        size_ = self._layout.get_pixel_size()
+        size_ = layout_get_pixel_size()
         year_label_width = size_[0]
         self.style.paint_layout(self.window, self.state, False, None,
                                 self, '', int(self.width -
                                               year_label_width - 2),
-                                2, self._layout)
+                                2, layout)
 
         # Draw date boxes
-        today = datetime.date.today()
-        total = int(self.width / self.item_width) + 2
         for i in range(-1, total):
-            date = self.start_date + datetime.timedelta(i)
+            date = start_date + datetime.timedelta(i)
+            x = int(reference_x + item_width * i)
 
-            context.move_to(self.reference.x + self.item_width * i + 15.5,
-                            self._middle)
-            context.arc(self.reference.x + self.item_width * i + 11.5,
-                        self._middle, 3, 0, self._2_times_pi)
+            if date == self.value:
+                item_fg_color = fg_color_selected
+                item_bg_color = bg_color_selected
+                state = gtk.STATE_SELECTED
+
+                self.style.paint_flat_box(self.window, state, gtk.SHADOW_ETCHED_IN,
+                                     None, self, '', x, 1, item_width + 3, self.height - 2)
+                # Draw main line
+                context.set_line_width(1)
+                context.set_source_rgb(*item_fg_color)
+                context.move_to(x, middle)
+                context.line_to(x + item_width + 3, middle)
+                context.stroke()
+
+            else:
+                item_fg_color = fg_color
+                item_bg_color = bs_color
+                state = self.state
+
+            context.move_to(x + 15.5, middle)
+            context.arc(x + 11.5, middle, 3, 0, TWO_TIMES_PI)
 
             context.set_line_width(1.5)
 
             if date != today:
-                context.set_source_rgb(*self._fg_color)
+                context.set_source_rgb(*item_fg_color)
                 context.fill_preserve()
-                context.set_source_rgb(*self._bs_color)
+                context.set_source_rgb(*item_bg_color)
                 context.stroke()
             else:
-                context.set_source_rgb(*self._bs_color)
+                context.set_source_rgb(*item_bg_color)
                 context.fill_preserve()
-                context.set_source_rgb(*self._fg_color)
+                context.set_source_rgb(*item_fg_color)
                 context.stroke()
 
             # Draw date label
-            self._layout.set_markup('<small>%s</small>' %
-                                    date.strftime('%b %d'))
-            size_ = self._layout.get_pixel_size()
+            layout_set_markup('<small>%s</small>' %
+                               date.strftime('%b %d'))
+            size_ = layout_get_pixel_size()
 
-            if size_[0] > self.item_width - 4 or self.item_width < 45:
+            if size_[0] > item_width - 4 or item_width < 45:
                 if (date.day == 1 or
-                    (i == 0 and self.end_date.year == self.start_date.year and
+                    (i == 0 and end_date.year == start_date.year and
                      not (date + datetime.timedelta(1)).day == 1)):
-                    x_ = int(self.reference.x + self.item_width * i + 4)
-                    self._layout.set_markup('<small>%s</small>' %
-                                            date.strftime('%b'))
-                    size_ = self._layout.get_pixel_size()
+                    x_ = int(reference_x + item_width * i + 4)
+                    layout_set_markup('<small>%s</small>' %
+                                      date.strftime('%b'))
+                    size_ = layout.get_pixel_size()
                     if x_ < self.width - year_label_width - size_[0] - 2:
-                        self.style.paint_layout(self.window, self.state,
+                        self.style.paint_layout(self.window, state,
                                                 False, None, self, '',
                                                 x_ if (x_ >= 4 and
                                                       (i > 0 or
                                                        (i == 0 and
                                                         date.day == 1))
                                                       ) else 4,
-                                                1, self._layout)
+                                                1, layout)
 
-                self._layout.set_markup('<small>%s</small>' %
+                layout_set_markup('<small>%s</small>' %
                                         date.strftime('%d'))
+                size_ = layout_get_pixel_size()
 
-                size_ = self._layout.get_pixel_size()
 
-            self.style.paint_layout(self.window, self.state, False, None,
-                                    self, '', int(self.reference.x +
-                                                  self.item_width * i + 4),
+            self.style.paint_layout(self.window, state, False, None,
+                                    self, '', int(reference_x +
+                                                  item_width * i + 4),
                                     int(self._middle - size_[1] - 6),
-                                    self._layout)
+                                    layout)
 
             if self.DEBUG:
                 # Draw box position number on debug mode
-                context.set_source_rgb(*self._fg_color)
-                context.move_to(self.reference.x + self.item_width * i + 6.5,
+                context.set_source_rgb(*fg_color)
+                context.move_to(reference_x + item_width * i + 6.5,
                                 12)
                 context.show_text('pos: %d/%d' % (i, total))
 
@@ -706,7 +826,7 @@ class TimelineBox(graphics.Scene):
 
 class Timeline(gtk.HBox):
     __gsignals__ = {
-        'value-changed': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
+        'range-changed': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
                           (gobject.TYPE_PYOBJECT,)),
         'event-added': (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,
                         (gobject.TYPE_PYOBJECT,)),
@@ -730,9 +850,9 @@ class Timeline(gtk.HBox):
 
         # Create Timeline box
         self.timeline_box = TimelineBox(count=count, callback=callback)
-        self.timeline_box.connect('value-changed',
+        self.timeline_box.connect('range-changed',
                                   lambda widget, *arg:
-                                      self.emit('value-changed', *arg))
+                                      self.emit('range-changed', *arg))
         self.timeline_box.connect('event-added',
                                   lambda widget, *arg:
                                       self.emit('event-added', *arg))
@@ -774,26 +894,42 @@ class Timeline(gtk.HBox):
 
     def get_start_date(self):
         return self.timeline_box.start_date
+
     def set_start_date(self, date):
         self.timeline_box.start_date = date
+
     start_date = property(get_start_date, set_start_date)
 
     def get_end_date(self):
         return self.timeline_box.end_date
+
     def set_end_date(self, date):
         self.timeline_box.end_date = date
+
     end_date = property(get_end_date, set_end_date)
 
     def get_value(self):
         return self.timeline_box.value
+
     def set_value(self, date):
         self.timeline_box.value = date
+
     value = property(get_value, set_value)
+
+    def get_scrolling(self):
+        return self.timeline_box.scrolling
+
+    def set_scrolling(self, scrolling):
+        self.timeline_box.scrolling = scrolling
+
+    scrolling = property(get_scrolling, set_scrolling)
 
     def get_count(self):
         return self.timeline_box.count
+
     def set_count(self, count):
         self.timeline_box.count = count
+
     count = property(get_count, set_count)
 
     def _on_size_allocate(self, widget, allocation):
@@ -804,11 +940,11 @@ class Timeline(gtk.HBox):
     def _on_left_bttn_released(self, widget):
         self.timeline_box.stop_auto_scroll()
 
-    def _on_right_bttn_released(self, widget):
-        self.timeline_box.stop_auto_scroll()
-
     def _on_left_bttn_pressed(self, widget):
         self.timeline_box.scroll_left(auto=True)
+
+    def _on_right_bttn_released(self, widget):
+        self.timeline_box.stop_auto_scroll()
 
     def _on_right_bttn_pressed(self, widget):
         self.timeline_box.scroll_right(auto=True)
