@@ -97,7 +97,8 @@ class MainDialog(gobject.GObject):
         # Timeline
         self.timeline = Timeline(count=timeline_count,
                                  callback=self.on_timeline_cb)
-        self.timeline.connect("value-changed", self._on_timeline_changed)
+        self.timeline.connect("range-changed", self._on_timeline_changed)
+        self.timeline.connect("button-press-event", self._on_timeline_click)
         self.timeline.connect("cleared", self._on_timeline_cleared)
         self.ui.get_object("timeline_box").add(self.timeline)
 
@@ -488,6 +489,10 @@ class MainDialog(gobject.GObject):
 
     def _on_timeline_cleared(self, widget, args):
         self._bullet_cache = {}
+
+    def _on_timeline_click(self, widget, event):
+        if event.button == 1 and event.type == gtk.gdk._2BUTTON_PRESS:
+            self.add_bill()
 
     def switch_view(self, view_number):
         self.gconf_client.set('show_paid_bills', view_number)
